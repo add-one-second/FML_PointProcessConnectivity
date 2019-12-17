@@ -21,7 +21,7 @@ for itrial = 1:TRL
     ETA = temp*bhat;
     P = exp(ETA)./(1+exp(ETA));
     
-    for isample = ht+1:SAM          % for k = ht+1:K
+    for isample = 60+1:SAM          % for k = ht+1:K
         loglike = loglike + Y(neu,isample,itrial)*log(P(isample-ht)) + (1-Y(neu,isample,itrial))*log(1-P(isample-ht));
     end
     

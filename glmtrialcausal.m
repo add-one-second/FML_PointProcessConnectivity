@@ -128,7 +128,7 @@ while (i < Irmax && devdiff > Ireps)
     end
 
     % Conjugate gradient method for symmetric postive definite matrix A
-    [beta_new , flag]= cgs(A,b,cgeps,cgmax,[],[],beta_old); % edited by ZL from beta_new = cgs... to prevent messages
+    beta_new = cgs(A,b,cgeps,cgmax,[],[],beta_old);
     beta_old = beta_new;
 
     for iepoch = 1:TRL*10
