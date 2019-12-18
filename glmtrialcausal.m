@@ -33,6 +33,13 @@ function [beta_new,devnew,stats] = glmtrialcausal(Y,y,trigger,ht,w)
 % April 13. 2009
 %================================================================
 
+% Optimized by ZL on 2019-12-17
+    % Convert BIGYsub from cell to matrix, without saving results on previous iteration
+    % parallel for-loop on trials
+        % move Xsub calculation out of the loop
+    % combine for-loops A and b
+    % attampted parfor on other occations, not significantly faster
+
 % Counting window
 WIN = zeros(ht/w,ht);
 for iwin = 1:ht/w
@@ -66,7 +73,7 @@ end
 % Dimension of new Yc
 [CHN SAM TRL] = size(Yc);
 % Design matrix, including DC column of all ones (1st or last)
-for itrial = 1:TRL       
+parfor itrial = 1:TRL       
     temp = ones(SAM-ht,1);
     for ichannel = 1:CHN 
         for hh = 0:3:ht-3
@@ -75,8 +82,14 @@ for itrial = 1:TRL
         end
     end
     BIGXsub{itrial} = temp;
-    %end
-    int_leng = fix((SAM-ht)/10);
+%     int_leng = fix((SAM-ht)/10);
+%     for isplit = 1:10
+%         Xsub{isplit+(itrial-1)*10} = BIGXsub{itrial}(int_leng*(isplit-1)+1:int_leng*isplit,:);
+%     end
+end
+
+int_leng = fix((SAM-ht)/10);
+for itrial = 1:TRL
     for isplit = 1:10
         Xsub{isplit+(itrial-1)*10} = BIGXsub{itrial}(int_leng*(isplit-1)+1:int_leng*isplit,:);
     end
@@ -84,9 +97,9 @@ end
 
 % Making output matrix Ysub{}
 for itrial = 1:TRL
-    BIGYsub{itrial} = Y(y,ht+1:SAM,itrial)';
+    BIGYsub = Y(y,ht+1:SAM,itrial)';
     for isplit = 1:10
-        Ysub{isplit+(itrial-1)*10} = BIGYsub{itrial}(int_leng*(isplit-1)+1:int_leng*isplit);
+        Ysub{isplit+(itrial-1)*10} = BIGYsub(int_leng*(isplit-1)+1:int_leng*isplit);
     end
 end
 
@@ -117,18 +130,14 @@ devdiff = abs(devnew - devold);
 while (i < Irmax && devdiff > Ireps)
 
     A = zeros(p,p);
-    for iepoch = 1:TRL*10
-        A = A + Xsub{iepoch}'*Wsub{iepoch}*Xsub{iepoch};
-    end
-    %A = A + A' - diag(diag(A));
-
     b = zeros(p,1);
-    for iepoch = 1:TRL*10
+    for iepoch = 1:TRL*10  % ZL on 2019-12-17, combine two for-loops
+        A = A + Xsub{iepoch}'*Wsub{iepoch}*Xsub{iepoch};
         b = b + Xsub{iepoch}'*Wsub{iepoch}*zsub{iepoch};
     end
 
     % Conjugate gradient method for symmetric postive definite matrix A
-    beta_new = cgs(A,b,cgeps,cgmax,[],[],beta_old);
+    [beta_new , flag]= cgs(A,b,cgeps,cgmax,[],[],beta_old); % edited by ZL from beta_new = cgs... to prevent messages
     beta_old = beta_new;
 
     for iepoch = 1:TRL*10

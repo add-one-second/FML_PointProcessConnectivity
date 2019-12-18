@@ -31,6 +31,14 @@ function [beta_new] = glmtrial(X,n,ht,w)
 % April 13. 2009
 %================================================================
 
+% Optimized by ZL on 2019-12-17
+    % Convert BIGXsub, BIGYsub from cell to matrix, without saving results on previous iteration
+        % has to restore BIGXsub to enable par-for
+    % Pre-allowcate temp, avoid changing size on every loop iteration
+        % not too much acceleration
+    % parallel for-loop on trials
+        % move Xsub calculation out of the loop
+
 % Counting window
 WIN = zeros(ht/w,ht);
 for iwin = 1:ht/w
@@ -47,16 +55,29 @@ Ireps = 0.05;
 
 % Design matrix, including DC column of all ones (1st or last)
 [CHN SAM TRL] = size(X); % Dimension of X (# Channels x # Samples x # Trials)
-for itrial = 1:TRL       
+
+parfor itrial = 1:TRL   % ZL 2019-12-17, introducing parallel, move Xsub calculation 
+%     BIGXsub = zeros(SAM-ht,ht/w*CHN+1);  % ZL, 2019-12-17, Pre-allowcate BIGXsub
     for isample = ht+1:SAM 
-        temp = [1];
+%         temp = [1];  % Pre-allowcate temp, avoid changing size on every loop iteration -- not faster
+        temp = zeros(1, ht/w*CHN+1);
+        temp(1) = 1;
         for ichannel = 1:CHN  
-            temp = [temp X(ichannel,isample-1:-1:isample-ht,itrial)*WIN'];
-            % temp = [temp (WIN*X(ichannel,isample-1:-1:isample-ht,itrial)')'];
+%             temp = [temp X(ichannel,isample-1:-1:isample-ht,itrial)*WIN'];
+            temp(1, (ichannel-1)*ht/w+2 : ichannel*ht/w+1) ...
+                = X(ichannel,isample-1:-1:isample-ht,itrial)*WIN';  % ZL, avoid chaning size, not faster
         end
         BIGXsub{itrial}(isample-ht,:) = temp;
+%         BIGXsub(isample-ht,:) = temp;  % ZL, 2019-12-17, stop saving median results
     end
-    int_leng = fix((SAM-ht)/10);
+    
+%     for isplit = 1:10
+%         Xsub{isplit+(itrial-1)*10} = BIGXsub(int_leng*(isplit-1)+1:int_leng*isplit,:);
+%     end
+end
+
+int_leng = fix((SAM-ht)/10);
+for itrial = 1:TRL 
     for isplit = 1:10
         Xsub{isplit+(itrial-1)*10} = BIGXsub{itrial}(int_leng*(isplit-1)+1:int_leng*isplit,:);
     end
@@ -64,9 +85,10 @@ end
 
 % Making output matrix Ysub{}
 for itrial = 1:TRL
-    BIGYsub{itrial} = X(n,ht+1:SAM,itrial)';
+%     BIGYsub{itrial} = X(n,ht+1:SAM,itrial)';
+    BIGYsub = X(n,ht+1:SAM,itrial)';  % ZL on 2019-12-17
     for isplit = 1:10
-        Ysub{isplit+(itrial-1)*10} = BIGYsub{itrial}(int_leng*(isplit-1)+1:int_leng*isplit);
+        Ysub{isplit+(itrial-1)*10} = BIGYsub(int_leng*(isplit-1)+1:int_leng*isplit);
     end
 end
 
@@ -108,7 +130,7 @@ while (i < Irmax && devdiff > Ireps)
     end
 
     % Conjugate gradient method for symmetric postive definite matrix A
-    beta_new = cgs(A,b,cgeps,cgmax,[],[],beta_old);
+    [beta_new, flag] = cgs(A,b,cgeps,cgmax,[],[],beta_old); % edited by ZL from beta_new = cgs, to prevent messege
     beta_old = beta_new;
 
     for iepoch = 1:TRL*10
